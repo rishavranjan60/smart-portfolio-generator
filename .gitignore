@@ -1,0 +1,29 @@
+# Node dependencies
+frontend/node_modules/
+backend/node_modules/
+
+# Python caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# FastAPI + Serverless generated
+backend/.serverless/
+backend/.pytest_cache/
+
+# Environment and secrets
+.env
+*.env
+
+# OS generated
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Vite build
+frontend/dist/
+
+# VS Code
+.vscode/

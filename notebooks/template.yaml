@@ -1,0 +1,26 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Smart Portfolio Generator Lambda Deployment
+
+Globals:
+  Function:
+    Timeout: 15
+
+Resources:
+  SmartPortfolioAPI:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: smart-portfolio-api
+      Handler: backend.main.lambda_handler  # <-- create this function
+      Runtime: python3.11
+      CodeUri: .
+      MemorySize: 256
+      Environment:
+        Variables:
+          OPENAI_API_KEY: YOUR_ACTUAL_KEY
+      Events:
+        SmartPortfolioApi:
+          Type: Api
+          Properties:
+            Path: /generate
+            Method: post

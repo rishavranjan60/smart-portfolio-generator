@@ -2,10 +2,11 @@ import yfinance as yf
 from prophet import Prophet
 import pandas as pd
 
-def forecast_stock(ticker, days=30):
+def forecast_stock(ticker: str, days: int = 30):
     df = yf.download(ticker, period='2y')
-    df = df.reset_index()[['Date', 'Close']].rename(columns={'Date': 'ds', 'Close': 'y'})
-    
+    df = df.reset_index()[['Date', 'Close']]
+    df.columns = ['ds', 'y']
+
     model = Prophet()
     model.fit(df)
 

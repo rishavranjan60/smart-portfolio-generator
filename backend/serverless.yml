@@ -1,0 +1,27 @@
+# "org" ensures this Service is used with the correct Serverless Framework Access Key.
+org: rishavai
+service: smart-portfolio-api
+
+provider:
+  name: aws
+  runtime: python3.10
+  region: eu-central-1
+  timeout: 30
+  memorySize: 512
+  stage: dev
+
+functions:
+  app:
+    handler: main.handler
+    events:
+      - http:
+          path: /predict
+          method: post
+          cors: true
+
+plugins:
+  - serverless-python-requirements
+
+custom:
+  pythonRequirements:
+    dockerizePip: true
