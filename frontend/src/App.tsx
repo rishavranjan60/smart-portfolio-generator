@@ -1,6 +1,5 @@
 import { useState } from 'react';
 
-
 import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -13,6 +12,9 @@ import {
 } from 'chart.js';
 
 ChartJS.register(LineElement, CategoryScale, LinearScale, PointElement, Tooltip, Legend);
+
+// ✅ Injected API base URL from environment
+const API_BASE_URL = import.meta.env.VITE_API_URL;
 
 function App() {
   const [ticker, setTicker] = useState('');
@@ -27,8 +29,7 @@ function App() {
     setExplanation('');
 
     try {
-      //const response = await fetch('http://127.0.0.1:8000/predict', {
-        const response = await fetch('https://xyz123.execute-api.eu-central-1.amazonaws.com/dev/predict', {
+      const response = await fetch(`${API_BASE_URL}/predict`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ticker, days }),
@@ -43,6 +44,9 @@ function App() {
 
     setLoading(false);
   };
+  
+  // 🔽 Rest of your code remains unchanged
+
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
