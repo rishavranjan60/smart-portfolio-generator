@@ -3,3 +3,5 @@ mangum
 pydantic
 prophet
 yfinance
+google-generativeai
+python-dotenv
