@@ -13,7 +13,7 @@ import {
 
 ChartJS.register(LineElement, CategoryScale, LinearScale, PointElement, Tooltip, Legend);
 
-// ✅ Injected API base URL from environment
+// Injected API base URL from environment
 const API_BASE_URL = import.meta.env.VITE_API_URL;
 
 function App() {
@@ -24,28 +24,49 @@ function App() {
   const [loading, setLoading] = useState(false);
 
   const fetchPrediction = async () => {
-    setLoading(true);
-    setForecast([]);
-    setExplanation('');
+  setLoading(true);
+  setForecast([]);
+  setExplanation('');
 
-    try {
-      const response = await fetch(`${API_BASE_URL}/predict`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticker, days }),
-      });
+  // Client-side validation
+  if (!ticker.trim()) {
+    setExplanation("Please enter a valid stock ticker symbol.");
+    setLoading(false);
+    return;
+  }
 
-      const data = await response.json();
-      setForecast(data.forecast || []);
-      setExplanation(data.explanation || 'No explanation provided.');
-    } catch (error) {
-      console.error('API Error:', error);
+  if (!days || days <= 0) {
+    setExplanation("Please enter a valid number of days.");
+    setLoading(false);
+    return;
+  }
+
+  const payload = { ticker: ticker.trim().toUpperCase(), days: Number(days) };
+  console.log("Sending request body:", payload); // Log for debugging
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/predict`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Server error: ${response.status}`);
     }
 
-    setLoading(false);
-  };
+    const data = await response.json();
+    setForecast(data.forecast || []);
+    setExplanation(data.explanation || 'No explanation provided.');
+  } catch (error) {
+    console.error('API Error:', error);
+    setExplanation("An error occurred while fetching prediction.");
+  }
+
+  setLoading(false);
+};
   
-  // 🔽 Rest of your code remains unchanged
+
 
 
   return (
