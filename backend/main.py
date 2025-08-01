@@ -1,29 +1,47 @@
-# genai/explainer.py
+from fastapi import FastAPI
+from pydantic import BaseModel
+from fastapi.middleware.cors import CORSMiddleware
+from mangum import Mangum
 
-import os
-import google.generativeai as genai
-from dotenv import load_dotenv
+from model.forecast import forecast_stock  # ✅ Forecast function
+from genai.explainer import generate_explanation  # ✅ Gemini explanation function
 
-# Load environment variables
-load_dotenv()
+# 📘 Request body schema
+class PredictRequest(BaseModel):
+    ticker: str
+    days: int
 
-# Configure Gemini API
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+# 🚀 Initialize FastAPI app
+app = FastAPI()
 
-# Generate explanation using Gemini
-def generate_explanation(ticker: str, forecast: str, duration: int = None) -> str:
-    prompt = f"""
-    You are a financial advisor. Based on this forecast:
+# 🌐 Enable CORS for frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "https://smart-portfolio-generator-iota.vercel.app"
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-    {forecast}
+# 🔮 Prediction + Gemini Explanation Endpoint
+@app.post("/predict")
+async def predict(data: PredictRequest):
+    forecast = forecast_stock(data.ticker, data.days)
+    explanation = generate_explanation(data.ticker, forecast, data.days)  # ✅ Now passes duration too
 
-    Explain in a few sentences why investing in {ticker} is a good idea for the next {duration} days.
-    Keep it simple, clear, and helpful.
-    """
+    return {
+        "ticker": data.ticker.upper(),
+        "forecast": forecast,
+        "explanation": explanation,
+    }
 
-    try:
-        model = genai.GenerativeModel("gemini-pro")
-        response = model.generate_content(prompt)
-        return response.text.strip()
-    except Exception as e:
-        return f"Failed to generate explanation: {str(e)}"
+# 🏠 Health check
+@app.get("/")
+def read_root():
+    return {"message": "Smart Portfolio Generator API is running 🚀"}
+
+# ✅ For AWS Lambda deployments
+handler = Mangum(app)
