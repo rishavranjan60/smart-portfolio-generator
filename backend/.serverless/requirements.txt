@@ -1,5 +1,7 @@
 fastapi
 mangum
-prophet
+numpy==1.23.5
+pandas==1.5.3
 pydantic
+uvicorn
 yfinance

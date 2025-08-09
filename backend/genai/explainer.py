@@ -4,17 +4,17 @@ import os
 from dotenv import load_dotenv
 import google.generativeai as genai
 
-# ✅ Load environment variables
+# Load environment variables
 load_dotenv()
 
-# ✅ Configure Gemini with API key
+# Configure Gemini with API key
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 if not GOOGLE_API_KEY:
-    raise ValueError("❌ GOOGLE_API_KEY not set in .env file.")
+    raise ValueError(" GOOGLE_API_KEY not set in .env file.")
 
 genai.configure(api_key=GOOGLE_API_KEY)
 
-# ✅ Generate explanation using Gemini
+# Generate explanation using Gemini
 def generate_explanation(ticker: str, forecast: list, duration: int = None) -> str:
     try:
         # Calculate average forecasted price
@@ -35,4 +35,4 @@ def generate_explanation(ticker: str, forecast: list, duration: int = None) -> s
         return response.text.strip() if hasattr(response, "text") else "Explanation not available."
 
     except Exception as e:
-        return f"❌ Failed to generate explanation: {str(e)}"
+        return f"Failed to generate explanation: {str(e)}"
