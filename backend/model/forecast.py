@@ -1,60 +1,49 @@
-import os
+# model/forecast.py
 import yfinance as yf
 import pandas as pd
-import numpy as np
+from datetime import timedelta
 
+# Try to use numpy for a tiny linear trend; fall back to flat if missing
 try:
-    from prophet import Prophet  # optional, for local use only
-    HAS_PROPHET = True
-except ImportError:
-    HAS_PROPHET = False
+    import numpy as np
+except Exception:
+    np = None
 
-
-def _prophet_forecast(df: pd.DataFrame, days: int):
-    model = Prophet()
-    model.fit(df)
-    future = model.make_future_dataframe(periods=days)
-    forecast = model.predict(future)
-    out = forecast[["ds", "yhat"]].tail(days)
-    out["ds"] = out["ds"].dt.strftime("%Y-%m-%dT00:00:00")
-    return out.to_dict(orient="records")
-
-
-def _linear_regression_forecast(close: pd.Series, days: int):
-    close = close.astype(float).dropna()
-    if len(close) < 10:
-        return []
-    x = np.arange(len(close))
-    y = close.values
-    m, b = np.polyfit(x, y, 1)
-
-    future_x = np.arange(len(close), len(close) + days)
-    preds = m * future_x + b
-
-    last_date = close.index[-1]
-    future_dates = pd.bdate_range(start=last_date + pd.Timedelta(days=1), periods=days)
-
-    return [
-        {"ds": d.strftime("%Y-%m-%dT00:00:00"), "yhat": float(round(p, 4))}
-        for d, p in zip(future_dates, preds)
-    ]
-
+def _linear_trend(values: pd.Series) -> float:
+    """Return simple slope of the last N closes."""
+    if np is None or len(values) < 2:
+        return 0.0
+    y = values.to_numpy(dtype=float)
+    x = np.arange(len(y), dtype=float)
+    # slope only
+    slope = np.polyfit(x, y, 1)[0]
+    return float(slope)
 
 def forecast_stock(ticker: str, days: int = 30):
-    df = yf.download(ticker, period="2y", interval="1d")
+    # Download last 2y of daily closes
+    df = yf.download(ticker, period="2y", interval="1d", progress=False)
+    if df.empty or "Close" not in df.columns:
+        return []
+
+    df = df.reset_index()[["Date", "Close"]].rename(columns={"Date": "ds", "Close": "y"})
+    df = df.dropna()
+
     if df.empty:
         return []
 
-    df = df.dropna()
-    df_p = df.reset_index()[["Date", "Close"]].rename(columns={"Date": "ds", "Close": "y"})
-    df_p["ds"] = pd.to_datetime(df_p["ds"])
+    # Use last 20 trading days to estimate a simple linear trend
+    lookback = min(20, len(df))
+    recent = df["y"].tail(lookback)
+    slope = _linear_trend(recent)
 
-    disable_prophet = os.getenv("DISABLE_PROPHET", "").lower() in {"1", "true", "yes"}
-    use_prophet = HAS_PROPHET and not disable_prophet
+    last_date = pd.to_datetime(df["ds"].iloc[-1])
+    last_price = float(df["y"].iloc[-1])
 
-    try:
-        if use_prophet:
-            return _prophet_forecast(df_p, days)
-        return _linear_regression_forecast(df["Close"], days)
-    except Exception:
-        return _linear_regression_forecast(df["Close"], days)
+    # Generate naive forecast: last price + slope * step
+    out = []
+    for i in range(1, days + 1):
+        yhat = last_price + slope * i
+        ds = (last_date + timedelta(days=i)).strftime("%Y-%m-%d")
+        out.append({"ds": ds, "yhat": float(yhat)})
+
+    return out
