@@ -1,38 +1,50 @@
 # genai/explainer.py
-
 import os
-from dotenv import load_dotenv
 import google.generativeai as genai
 
-# Load environment variables
-load_dotenv()
-
-# Configure Gemini with API key
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 if not GOOGLE_API_KEY:
-    raise ValueError(" GOOGLE_API_KEY not set in .env file.")
+    print("⚠️ GOOGLE_API_KEY is missing at import time. Gemini will be disabled.")
+else:
+    genai.configure(api_key=GOOGLE_API_KEY)
 
-genai.configure(api_key=GOOGLE_API_KEY)
-
-# Generate explanation using Gemini
-def generate_explanation(ticker: str, forecast: list, duration: int = None) -> str:
+def generate_explanation(ticker: str, forecast: list, duration: int | None = None) -> str:
+    """
+    Generates a short explanation via Gemini. Falls back safely if:
+      - no key is present,
+      - forecast is empty,
+      - Gemini errors.
+    """
     try:
-        # Calculate average forecasted price
-        avg_prediction = sum([point['yhat'] for point in forecast]) / len(forecast)
+        if not GOOGLE_API_KEY:
+            return "Explanation not available (GOOGLE_API_KEY not set on server)."
 
-        # Prepare Gemini prompt
-        prompt = f"""
-        You are a helpful financial advisor.
+        if not forecast:
+            return "No forecast data to explain."
 
-        The forecasted average price of {ticker.upper()} over the next {duration or len(forecast)} days is approximately ${avg_prediction:.2f}.
+        # average price (guard against missing yhat)
+        try:
+            vals = [float(p.get("yhat", 0)) for p in forecast if "yhat" in p]
+            if not vals:
+                return "No forecast data to explain."
+            avg_prediction = sum(vals) / len(vals)
+        except Exception:
+            return "No forecast data to explain."
 
-        Explain this to a beginner investor in simple, friendly terms. Highlight trends or possible market behavior if relevant.
-        """
+        # keep the prompt lean so it’s fast/cheap
+        prompt = (
+            f"Explain in 3 short sentences the next {duration or len(forecast)} days outlook for {ticker}.\n"
+            f"Average forecasted price: ${avg_prediction:.2f}.\n"
+            f"Keep it beginner-friendly and avoid guarantees."
+        )
 
-        model = genai.GenerativeModel("gemini-pro")
-        response = model.generate_content(prompt)
+        # Use a fast text-only model
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        resp = model.generate_content(prompt)
 
-        return response.text.strip() if hasattr(response, "text") else "Explanation not available."
+        text = (getattr(resp, "text", "") or "").strip()
+        return text or "No explanation returned by Gemini."
 
     except Exception as e:
-        return f"Failed to generate explanation: {str(e)}"
+        print(f"❌ Gemini explanation failed: {e}")
+        return f"Explanation not available (Gemini error)."

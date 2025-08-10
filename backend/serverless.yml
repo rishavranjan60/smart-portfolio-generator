@@ -8,6 +8,8 @@ provider:
   timeout: 29
   memorySize: 512
   stage: dev
+  environment:
+    GOOGLE_API_KEY: ${env:GOOGLE_API_KEY}  # ✅ Load Gemini API key from .env
 
 functions:
   app:
@@ -19,6 +21,7 @@ functions:
 
 plugins:
   - serverless-python-requirements
+  - serverless-dotenv-plugin  # ✅ Load .env file automatically
 
 custom:
   pythonRequirements:
