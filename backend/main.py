@@ -1,42 +1,41 @@
+# main.py
+import os
 from fastapi import FastAPI
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from mangum import Mangum
 
-# Safe import of modules
+# Safe imports (fallbacks if optional deps missing on Lambda)
 try:
     from model.forecast import forecast_stock
-except ImportError:
-    def forecast_stock(ticker: str, days: int):
-        return []
-
-try:
     from genai.explainer import generate_explanation
 except ImportError:
-    def generate_explanation(ticker: str, forecast: list, days: int):
-        return "Explanation not available (module not deployed on Lambda)."
+    forecast_stock = lambda ticker, days: []
+    generate_explanation = lambda ticker, forecast, days: "Explanation not available (module not deployed on Lambda)."
 
-# Request schema using Pydantic
 class PredictRequest(BaseModel):
     ticker: str
     days: int
 
-# FastAPI app instance
 app = FastAPI()
 
-# CORS setup for local and production frontends
+# ── CORS: read from env, fallback to localhost + your Vercel app ─────────────────
+default_origins = [
+    "http://localhost:5173",
+    "https://smart-portfolio-generator-iota.vercel.app",
+]
+env_origins = os.getenv("ALLOWED_ORIGINS", ",".join(default_origins))
+allow_origins = [o.strip().rstrip("/") for o in env_origins.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "https://smart-portfolio-generator-iota.vercel.app",
-    ],
+    allow_origins=allow_origins,         # explicit domains
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
+    max_age=86400,  # cache preflight 1 day
 )
 
-# Prediction route with explanation
 @app.post("/predict")
 async def predict(data: PredictRequest):
     forecast = forecast_stock(data.ticker, data.days)
@@ -47,10 +46,8 @@ async def predict(data: PredictRequest):
         "explanation": explanation,
     }
 
-# Root health check
 @app.get("/")
 def read_root():
-    return {"message": "Smart Portfolio Generator API is running "}
+    return {"message": "Smart Portfolio Generator API is running 🚀"}
 
-# AWS Lambda handler entry point
 handler = Mangum(app)
