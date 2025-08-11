@@ -13,8 +13,12 @@ import {
 
 ChartJS.register(LineElement, CategoryScale, LinearScale, PointElement, Tooltip, Legend);
 
-// Injected API base URL from environment
-const API_BASE_URL = import.meta.env.VITE_API_URL;
+// Injected API base URL from environment (normalized)
+const RAW_BASE = (import.meta.env.VITE_API_URL || "") as string;
+if (!RAW_BASE) {
+  console.error("VITE_API_URL is missing. Set it in your frontend .env or Vercel env.");
+}
+const API_BASE_URL = RAW_BASE.replace(/\/+$/, ""); // remove trailing "/"
 
 function App() {
   const [ticker, setTicker] = useState('');
@@ -24,50 +28,47 @@ function App() {
   const [loading, setLoading] = useState(false);
 
   const fetchPrediction = async () => {
-  setLoading(true);
-  setForecast([]);
-  setExplanation('');
+    setLoading(true);
+    setForecast([]);
+    setExplanation('');
 
-  // Client-side validation
-  if (!ticker.trim()) {
-    setExplanation("Please enter a valid stock ticker symbol.");
-    setLoading(false);
-    return;
-  }
-
-  if (!days || days <= 0) {
-    setExplanation("Please enter a valid number of days.");
-    setLoading(false);
-    return;
-  }
-
-  const payload = { ticker: ticker.trim().toUpperCase(), days: Number(days) };
-  console.log("Sending request body:", payload); // Log for debugging
-
-  try {
-    const response = await fetch(`${API_BASE_URL}/predict`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Server error: ${response.status}`);
+    // Client-side validation
+    if (!ticker.trim()) {
+      setExplanation("Please enter a valid stock ticker symbol.");
+      setLoading(false);
+      return;
     }
 
-    const data = await response.json();
-    setForecast(data.forecast || []);
-    setExplanation(data.explanation || 'No explanation provided.');
-  } catch (error) {
-    console.error('API Error:', error);
-    setExplanation("An error occurred while fetching prediction.");
-  }
+    if (!days || days <= 0) {
+      setExplanation("Please enter a valid number of days.");
+      setLoading(false);
+      return;
+    }
 
-  setLoading(false);
-};
-  
+    const payload = { ticker: ticker.trim().toUpperCase(), days: Number(days) };
+    console.log("Sending request body:", payload); // Debug log
 
+    try {
+      const response = await fetch(`${API_BASE_URL}/predict`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
 
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      setForecast(data.forecast || []);
+      setExplanation(data.explanation || 'No explanation provided.');
+    } catch (error) {
+      console.error('API Error:', error);
+      setExplanation("An error occurred while fetching prediction.");
+    }
+
+    setLoading(false);
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
@@ -101,7 +102,7 @@ function App() {
 
       {forecast.length > 0 && (
         <div className="w-full max-w-xl mt-6">
-          <h2 className="text-lg font-semibold mb-4">📊 Forecast Table</h2>
+          <h2 className="text-lg font-semibold mb-4">Forecast Table</h2>
 
           <table className="w-full table-auto border border-gray-300 shadow-sm bg-white rounded-md mb-6">
             <thead className="bg-gray-200">
@@ -113,7 +114,7 @@ function App() {
             <tbody>
               {forecast.map((entry: any, index: number) => (
                 <tr key={index} className="text-center">
-                  <td className="border p-2">{entry.ds.split('T')[0]}</td>
+                  <td className="border p-2">{String(entry.ds).split('T')[0]}</td>
                   <td className="border p-2">{entry.yhat.toFixed(2)}</td>
                 </tr>
               ))}
@@ -123,7 +124,7 @@ function App() {
           <h2 className="text-lg font-semibold mb-2">📈 Forecast Chart</h2>
           <Line
             data={{
-              labels: forecast.map((f: any) => f.ds.split('T')[0]),
+              labels: forecast.map((f: any) => String(f.ds).split('T')[0]),
               datasets: [
                 {
                   label: `Prediction for ${ticker.toUpperCase()}`,
@@ -146,7 +147,7 @@ function App() {
           />
 
           <div className="mt-6 bg-white shadow p-4 rounded-md">
-            <h2 className="text-lg font-semibold mb-2">🧠 AI Explanation</h2>
+            <h2 className="text-lg font-semibold mb-2"> AI Explanation </h2>
             <p className="text-gray-700 whitespace-pre-line">{explanation}</p>
           </div>
         </div>
