@@ -6,10 +6,13 @@ provider:
   runtime: python3.11
   region: eu-central-1
   timeout: 29
-  memorySize: 512
+  memorySize: 1024                 # more CPU
   stage: dev
   environment:
-    GOOGLE_API_KEY: ${env:GOOGLE_API_KEY}  # ✅ Load Gemini API key from .env
+    GOOGLE_API_KEY: ${env:GOOGLE_API_KEY}
+    FINNHUB_API_KEY: ${env:FINNHUB_API_KEY}     # << add this for Finnhub
+    ALLOW_FRACTIONAL_SHARES: "true"
+    ALLOWED_ORIGINS: "http://localhost:5173,https://smart-portfolio-generator-iota.vercel.app"
 
 functions:
   app:
@@ -21,7 +24,7 @@ functions:
 
 plugins:
   - serverless-python-requirements
-  - serverless-dotenv-plugin  # ✅ Load .env file automatically
+  - serverless-dotenv-plugin
 
 custom:
   pythonRequirements:
@@ -30,21 +33,15 @@ custom:
     strip: true
     useStaticCache: false
     useDownloadCache: false
-    noDeploy:
-      - pip
-      - setuptools
-      - wheel
 
 package:
-  individually: true
-  exclude:
-    - venv/**
-    - .venv/**
-    - node_modules/**
-    - __pycache__/**
-    - .pytest_cache/**
-    - .serverless/**
-    - .DS_Store
-    - '*.zip'
-    - frontend/**
-    - .env
+  patterns:
+    - data/**                 # include your tickers file(s)
+    - '!frontend/**'
+    - '!venv/**'
+    - '!.venv/**'
+    - '!node_modules/**'
+    - '!**/__pycache__/**'
+    - '!.serverless/**'
+    - '!*.zip'
+    - '!.env'

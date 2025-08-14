@@ -1,12 +1,18 @@
-# model/forecast.py
-import pandas as pd
-from datetime import timedelta
+# backend/model/forecast.py
+from __future__ import annotations
 
-# Optional: small linear trend if numpy is available
+import os, time, math
+from datetime import datetime, timedelta, timezone
+import requests
+import pandas as pd
+
 try:
     import numpy as np
 except Exception:
     np = None
+
+FINNHUB_TOKEN = os.getenv("FINNHUB_API_KEY", "")
+BASE = "https://finnhub.io/api/v1"  # docs: /stock/candle, /quote, /forex/rates
 
 def _linear_trend(values: pd.Series) -> float:
     if np is None or len(values) < 2:
@@ -16,7 +22,6 @@ def _linear_trend(values: pd.Series) -> float:
     return float(np.polyfit(x, y, 1)[0])
 
 def _synthetic_forecast(base_price: float, days: int, slope: float = 0.5):
-    # no internet fallback: simple upward line
     out = []
     today = pd.Timestamp.utcnow().normalize()
     for i in range(1, days + 1):
@@ -24,49 +29,83 @@ def _synthetic_forecast(base_price: float, days: int, slope: float = 0.5):
         out.append({"ds": ds, "yhat": float(base_price + slope * i)})
     return out
 
+def _fh_get(path: str, params: dict) -> dict:
+    if not FINNHUB_TOKEN:
+        return {}
+    p = dict(params or {})
+    p["token"] = FINNHUB_TOKEN
+    r = requests.get(f"{BASE}{path}", params=p, timeout=10)
+    if r.status_code != 200:
+        return {}
+    return r.json() or {}
+
+def _fh_stock_candles(symbol: str, from_ts: int, to_ts: int, res: str = "D") -> pd.Series:
+    js = _fh_get("/stock/candle", {"symbol": symbol, "resolution": res, "from": from_ts, "to": to_ts})
+    if not js or js.get("s") != "ok":
+        return pd.Series(dtype=float)
+    closes = js.get("c") or []
+    stamps = js.get("t") or []
+    if not closes or not stamps or len(closes) != len(stamps):
+        return pd.Series(dtype=float)
+    idx = pd.to_datetime(pd.Series(stamps), unit="s", utc=True).tz_convert(None)
+    s = pd.Series(closes, index=idx, name="Close").astype(float)
+    return s.dropna()
+
+def _fh_quote(symbol: str) -> float | None:
+    js = _fh_get("/quote", {"symbol": symbol})
+    c = js.get("c") if isinstance(js, dict) else None
+    try:
+        return float(c) if c is not None and math.isfinite(float(c)) else None
+    except Exception:
+        return None
+
+def _fh_fx_rate(from_cur: str, to_cur: str) -> float:
+    """Get real-time FX rate from Finnhub (e.g., USD→EUR)."""
+    js = _fh_get("/forex/rates", {})
+    if not js or "quote" not in js:
+        return 1.0
+    rates = js["quote"]
+    key = f"{from_cur}{to_cur}"
+    return float(rates.get(key, 1.0))
+
 def forecast_stock(ticker: str, days: int = 30):
-    # Defer import so the module loads even if yfinance is missing
+    """
+    Build a simple linear projection from ~2 years of daily closes (Finnhub).
+    Converts USD stocks to EUR automatically using live FX.
+    """
     try:
-        import yfinance as yf
+        now = datetime.now(timezone.utc)
+        to_ts = int(now.timestamp())
+        from_ts = int((now - timedelta(days=730)).timestamp())
+
+        # Try candles
+        s = _fh_stock_candles(ticker, from_ts, to_ts, res="D")
+        if s.empty:
+            base = _fh_quote(ticker) or 100.0
+            slope = 0.3
+        else:
+            s = s.sort_index()
+            base = float(s.iloc[-1])
+            lookback = min(20, len(s))
+            slope = _linear_trend(s.tail(lookback))
+
+        # Detect USD stocks (no .XETR/.PAR/.SWX suffix means likely US)
+        if "." not in ticker:  # crude check — US stocks
+            fx_rate = _fh_fx_rate("USD", "EUR")
+            base *= fx_rate
+            slope *= fx_rate
+        else:
+            fx_rate = 1.0
+
+        # Build forecast
+        out = []
+        last_date = datetime.now() if s.empty else s.index[-1]
+        for i in range(1, days + 1):
+            ds = (last_date + timedelta(days=i)).strftime("%Y-%m-%d")
+            yhat = base + slope * i
+            out.append({"ds": ds, "yhat": float(yhat)})
+
+        return out
     except Exception as e:
-        # yfinance not installed on Lambda -> synthetic result
-        print("yfinance import failed:", e)
-        return _synthetic_forecast(100.0, days)
-
-    # 1) Try normal download
-    try:
-        df = yf.download(ticker, period="2y", interval="1d", progress=False)
-    except Exception as e:
-        print("yf.download failed:", e)
-        df = pd.DataFrame()
-
-    # 2) If empty, try a second method: latest close via .history()
-    if df.empty:
-        try:
-            t = yf.Ticker(ticker)
-            h = t.history(period="1mo", interval="1d")
-            if not h.empty and "Close" in h.columns:
-                last_close = float(h["Close"].dropna().iloc[-1])
-                return _synthetic_forecast(last_close, days, slope=0.3)
-        except Exception as e:
-            print("Ticker.history failed:", e)
-
-        # 3) Still nothing? Return synthetic
+        print("forecast_stock error:", e)
         return _synthetic_forecast(100.0, days, slope=0.3)
-
-    # Build forecast from last close + estimated slope
-    df = df.reset_index()[["Date", "Close"]].rename(columns={"Date": "ds", "Close": "y"}).dropna()
-    if df.empty:
-        return _synthetic_forecast(100.0, days, slope=0.3)
-
-    lookback = min(20, len(df))
-    slope = _linear_trend(df["y"].tail(lookback))
-    last_date = pd.to_datetime(df["ds"].iloc[-1])
-    last_price = float(df["y"].iloc[-1])
-
-    out = []
-    for i in range(1, days + 1):
-        ds = (last_date + timedelta(days=i)).strftime("%Y-%m-%d")
-        yhat = last_price + slope * i
-        out.append({"ds": ds, "yhat": float(yhat)})
-    return out
