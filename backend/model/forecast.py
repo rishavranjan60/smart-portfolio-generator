@@ -47,7 +47,7 @@ def _fh_stock_candles(symbol: str, from_ts: int, to_ts: int, res: str = "D") -> 
     stamps = js.get("t") or []
     if not closes or not stamps or len(closes) != len(stamps):
         return pd.Series(dtype=float)
-    idx = pd.to_datetime(pd.Series(stamps), unit="s", utc=True).tz_convert(None)
+    idx = pd.to_datetime(stamps, unit="s", utc=True).tz_convert(None)
     s = pd.Series(closes, index=idx, name="Close").astype(float)
     return s.dropna()
 
